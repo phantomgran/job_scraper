@@ -3,17 +3,10 @@ import requests
 from bs4 import BeautifulSoup
 
 
-def get_url(position,location):
-
-    template = 'https://www.indeed.com/jobs?q={}&l={}'
-    url = template.format(position,location)
-    return url
-
-    
 def get_record(card):
     atag = card.h2.a
     job_title = atag.get('title')
-    job_url = 'https://www.indeed.com' + atag.get('href')
+    job_url = 'https://www.indeed.com/' + atag.get('href')
     company = card.find ('span','company').text.strip()
     job_location = card.find('div','recJobLoc').get('data-rc-loc')
     job_summary = card.find('div','summary').text.strip()
@@ -23,40 +16,79 @@ def get_record(card):
         job_salary = card.find('span','salaryText').text.strip()
     except AttributeError:
         job_salary = ''
-        
-    record = (job_title, company, job_location, job_salary, job_summary, job_url, date)
 
+
+    record = (job_title, company, job_location, job_salary, job_summary, job_url, date)
     return record 
 
 
 def main(position,location):
     records = []
-    url = get_url(position,location)
     
-    #Open a new excelsheet
+    # use the params to pass the values to the URL
+    url = "https://www.indeed.com/jobs"
+    params = {
+        "q": position,
+        "l": location
+    }
 
-  
-    response = requests.get(url)
+
+    response = requests.get(url, params=params)
     soup = BeautifulSoup(response.text, 'html.parser')
-    cards = soup.find_all('div','jobserarch-SerpJobCard')
+    # cards = soup.find_all('div','jobserarch-SerpJobCard')
+    
+    cards = soup.find_all('div',{'class':'jobsearch-SerpJobCard unifiedRow row result'})
+    if len(cards) == 0:        
+        cards = soup.find_all('div',{'class':'jobsearch-SerpJobCard unifiedRow row result clickcard'})
+    
+    counter = 1
+    print(len(cards))
     while True:
+
+
         for card in cards:
             record = get_record(card)
             records.append(record)
+
+        print("on page:",counter)
+        print("Found # of records:",len(records))
+
+
+
+        # it seems like this site uses arial-label without double qoutes, which breaks the parsing
+        # so look for that next link by a different attribute
+        pagination = soup.find_all('a', {'onmousedown':'addPPUrlParam && addPPUrlParam(this);'})
+        if len(pagination) != 0:
+
+            last_pagination = pagination[-1]
+
+            # does it have the ">" svg in it?
+            if last_pagination.find('svg') != None:
+
+                # yes, this is the last one with the > button
+                # make the new request, get the new cards for the next loop
+                response = requests.get('https://www.indeed.com' + last_pagination['href'])
+                
+                soup = BeautifulSoup(response.text, 'html.parser')
+                cards = soup.find_all('div',{'class':'jobsearch-SerpJobCard unifiedRow row result'})
+                if len(cards) == 0:        
+                    cards = soup.find_all('div',{'class':'jobsearch-SerpJobCard unifiedRow row result clickcard'})
+
+            else:
+                print("Couldnt find the > next link")
+                break
+        else:
+            print("There were no pagination links")
+            break
+
+        counter=counter+1
         
-        #Go to the next page
-        try:
-            pagination = soup.find('a',{'arial-label':'Next'}).get('href')
-            url = 'https://www.indeed.com' + pagination 
-        except AttributeError:
-             break
-    
+    #Open a new excelsheet
     with open('result.csv', 'w', newline = '', encoding = 'utf-8') as f:
         writer = csv.writer (f)
         writer.writerow (['job_title', 'company', 'location', 'job_summary', 'salary', 'post_date', 'job_url'])
         writer.writerows(records) 
-        
-main('UX designer', 'New York,NY')
 
+main('UX designer', 'New York, NY')
 
     
