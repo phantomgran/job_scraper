@@ -1,0 +1,62 @@
+import csv
+import requests
+from bs4 import BeautifulSoup
+
+
+def get_url(position,location):
+
+    template = 'https://www.indeed.com/jobs?q={}&l={}'
+    url = template.format(position,location)
+    return url
+
+    
+def get_record(card):
+    atag = card.h2.a
+    job_title = atag.get('title')
+    job_url = 'https://www.indeed.com' + atag.get('href')
+    company = card.find ('span','company').text.strip()
+    job_location = card.find('div','recJobLoc').get('data-rc-loc')
+    job_summary = card.find('div','summary').text.strip()
+    date = card.find('span','date').text
+
+    try:
+        job_salary = card.find('span','salaryText').text.strip()
+    except AttributeError:
+        job_salary = ''
+        
+    record = (job_title, company, job_location, job_salary, job_summary, job_url, date)
+
+    return record 
+
+
+def main(position,location):
+    records = []
+    url = get_url(position,location)
+    
+    #Open a new excelsheet
+
+  
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    cards = soup.find_all('div','jobserarch-SerpJobCard')
+    while True:
+        for card in cards:
+            record = get_record(card)
+            records.append(record)
+        
+        #Go to the next page
+        try:
+            pagination = soup.find('a',{'arial-label':'Next'}).get('href')
+            url = 'https://www.indeed.com' + pagination 
+        except AttributeError:
+             break
+    
+    with open('result.csv', 'w', newline = '', encoding = 'utf-8') as f:
+        writer = csv.writer (f)
+        writer.writerow (['job_title', 'company', 'location', 'job_summary', 'salary', 'post_date', 'job_url'])
+        writer.writerows(records) 
+        
+main('UX designer', 'New York,NY')
+
+
+    
